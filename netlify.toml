@@ -1,0 +1,7 @@
+[build]
+  publish = "site"
+  command = "echo 'static site, nothing to build'"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

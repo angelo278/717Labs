@@ -1,0 +1,70 @@
+name: Free AI report
+
+on:
+  repository_dispatch:
+    types: [report-request]        # sent automatically by the website form
+  workflow_dispatch:               # lets you re-run one by hand from the Actions tab
+    inputs:
+      name:     { description: "Customer's name", required: true }
+      email:    { description: "Customer's email", required: true }
+      website:  { description: "Customer's website", required: true }
+      searches: { description: "Example searches (optional)", required: false, default: "" }
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: report/requirements.txt
+
+      - name: Install
+        run: pip install -r report/requirements.txt
+
+      - name: Cache the PDF browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('report/requirements.txt') }}
+
+      - name: Install the PDF browser
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            python -m playwright install-deps chromium
+          else
+            python -m playwright install --with-deps chromium
+          fi
+
+      - name: Build and email the report
+        env:
+          REQUEST_JSON: ${{ github.event_name == 'repository_dispatch' && toJSON(github.event.client_payload) || toJSON(github.event.inputs) }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+        run: python report/pipeline.py
+
+      - name: Keep a copy of the findings (14 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.run_id }}
+          path: report/out/
+          retention-days: 14
+          if-no-files-found: ignore

@@ -1,0 +1,134 @@
+{
+  "sample": true,
+  "business": "Northgate Accountancy",
+  "website": "northgateaccountancy.co.uk",
+  "location": "Leeds",
+  "industry": "accountants",
+  "date": "26 November 2026",
+  "platforms": [
+    "ChatGPT",
+    "Perplexity",
+    "Gemini",
+    "Google AI Overviews",
+    "Claude",
+    "Copilot"
+  ],
+  "questions": [
+    "Who are the best accountants in Leeds?",
+    "Can you recommend an accountant in Leeds for a small business?",
+    "Which accountants in Leeds help with self-assessment tax returns?",
+    "I run a café in Leeds. Which local accountant should I use?",
+    "What do you know about Northgate Accountancy in Leeds?"
+  ],
+  "results": [
+    [
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      2,
+      2,
+      1,
+      0,
+      2
+    ]
+  ],
+  "summary": [
+    "When people ask AI for an accountant in Leeds, Northgate Accountancy rarely comes up. It was mentioned in 6 of 24 recommendation answers and never named as a top choice.",
+    "AI tools do know the business exists: five of six platforms could describe it when asked by name, but two gave an out-of-date address.",
+    "Two local competitors are recommended far more often, mainly because they have more reviews and clearer service pages."
+  ],
+  "competitors": [
+    {
+      "name": "Aire Valley Accounts",
+      "score": 70,
+      "appearances": 17
+    },
+    {
+      "name": "Kirkgate Tax & Accounts",
+      "score": 58,
+      "appearances": 13
+    },
+    {
+      "name": "Headrow Bookkeeping",
+      "score": 31,
+      "appearances": 6
+    }
+  ],
+  "screenshots": [
+    {
+      "platform": "ChatGPT",
+      "question": "Who are the best accountants in Leeds?",
+      "answer": [
+        "Here are some well-reviewed accountants in Leeds:",
+        "1. Aire Valley Accounts: small businesses and sole traders, strong Google reviews.",
+        "2. Kirkgate Tax & Accounts: self-assessment and VAT returns, fixed monthly fees.",
+        "3. Headrow Bookkeeping: bookkeeping and payroll for local shops."
+      ],
+      "note": "Northgate Accountancy was not mentioned."
+    },
+    {
+      "platform": "Perplexity",
+      "question": "Can you recommend an accountant in Leeds for a small business?",
+      "answer": [
+        "For small businesses in Leeds, popular options include:",
+        "• Aire Valley Accounts (4.9 stars, 210 reviews)",
+        "• Kirkgate Tax & Accounts (fixed-fee packages)",
+        "• Northgate Accountancy (limited information available)"
+      ],
+      "note": "Mentioned last, with no detail about its services."
+    }
+  ],
+  "opportunities": [
+    {
+      "title": "Complete and correct your business listings",
+      "found": "Your Google Business Profile shows an old address and lists only one service. You have no Bing Places listing, which Copilot and ChatGPT both draw on.",
+      "action": "Update your Google profile with your current address, opening hours and every service you offer, and create a matching Bing Places listing.",
+      "why": "AI tools check these listings to confirm a business is real, local and relevant. Wrong details make them less likely to recommend you.",
+      "effort": "Low"
+    },
+    {
+      "title": "Answer your customers' questions on your website",
+      "found": "Your website does not clearly say who you help, what you charge or that you handle self-assessment returns.",
+      "action": "Add a page for each main service, written in plain English, with a short set of common questions and answers, such as fees, deadlines and who it is for.",
+      "why": "AI tools recommend businesses whose websites directly answer the question being asked. Clear, specific pages give them something to quote.",
+      "effort": "Medium"
+    },
+    {
+      "title": "Build more independent reviews and mentions",
+      "found": "You have 11 Google reviews. The two competitors AI recommends most have 210 and 96.",
+      "action": "Ask satisfied clients for a review after each tax return, and make sure you are listed in trusted directories such as your professional body's register and local business directories.",
+      "why": "AI tools look for signs that other people trust a business. Reviews and mentions on independent sites are among the strongest of these.",
+      "effort": "Medium"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# 717Labs
+
+> 717Labs is a done-for-you, AI-native answer engine optimization (AEO) agency. We get businesses worldwide named and recommended by AI assistants such as ChatGPT, Perplexity, Gemini and Google AI Overviews, and report the results every month.
+
+## Retainers
+Done-for-you monthly retainers, tailored to each business. A retainer can include: buyer-question tracking across ChatGPT, Perplexity, Gemini and Google AI; answer-led page rewriting; FAQs and schema markup; listings and reviews; competitor benchmarking and alerts; international visibility reviews; quarterly in-depth audits; monthly plain-English reports and strategy calls. 3-month minimum.
+- Free AI visibility report: we test the questions buyers ask across ChatGPT, Perplexity, Gemini, Claude and Google AI Overviews and send a score out of 100, examples of the real AI answers naming competitors and the top three fixes, within 24 hours.
+
+## Contact
+- Website: https://717labs.co.uk/
+- Email: info@717labs.co.uk
