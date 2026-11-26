@@ -6,7 +6,7 @@ The 717labs.co.uk website and the robot that sends the free AI visibility report
 
 1. Someone fills in the free report form on the website (Netlify Forms).
 2. `netlify/functions/submission-created.mjs` runs automatically. It applies two limits
-   (one report per website every 30 days, and a daily cap) and asks GitHub to start the robot.
+   (one report per email address every 30 days, and a daily cap) and asks GitHub to start the robot.
 3. `.github/workflows/report.yml` runs `report/pipeline.py`, which:
    - reads the customer's website and works out the business, town and trade;
    - writes 4 customer-style questions plus 1 question about the business by name;

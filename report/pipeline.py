@@ -493,7 +493,7 @@ def run(req):
     name, email = first_name(req.get("name")), req["email"].strip()
     if mode == "repeat":
         send_email(email, "Your AI visibility report", email_html([
-            f"Hi {name},", "Thank you for your request. We created a free AI visibility report for this website within the last 30 days, "
+            f"Hi {name},", "Thank you for your request. We sent a free AI visibility report to this email address within the last 30 days, "
             "so we have not run a new one yet.", "If you would like another copy, or a fresh check, simply reply to this email."]))
         return "repeat"
     if mode == "over-cap":

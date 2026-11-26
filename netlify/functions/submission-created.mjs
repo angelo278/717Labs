@@ -2,7 +2,7 @@
 // It checks the request against simple limits, then asks GitHub to build and email the report.
 import { getStore } from "@netlify/blobs";
 
-const PER_SITE_DAYS = 30;                                   // one report per website per 30 days
+const PER_EMAIL_DAYS = 30;                                  // one report per email address per 30 days
 const DAILY_CAP = Number(process.env.REPORT_DAILY_CAP || 40); // protects against floods and runaway costs
 
 const domainOf = (url) => {
@@ -26,8 +26,9 @@ export default async (req) => {
   const now = Date.now();
   const today = new Date().toISOString().slice(0, 10);
 
-  const last = await store.get(`site:${domain}`);
-  const tooSoon = last && now - Number(last) < PER_SITE_DAYS * 864e5;
+  const emailKey = email.toLowerCase();
+  const last = await store.get(`email:${emailKey}`);
+  const tooSoon = last && now - Number(last) < PER_EMAIL_DAYS * 864e5;
   const count = Number((await store.get(`day:${today}`)) || 0);
   const overCap = count >= DAILY_CAP;
 
@@ -58,7 +59,7 @@ export default async (req) => {
     return new Response("dispatch failed", { status: 500 });
   }
   if (!tooSoon && !overCap) {
-    await store.set(`site:${domain}`, String(now));
+    await store.set(`email:${emailKey}`, String(now));
     await store.set(`day:${today}`, String(count + 1));
   }
   return new Response("ok");
