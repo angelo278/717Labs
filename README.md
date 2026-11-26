@@ -22,7 +22,7 @@ The 717labs.co.uk website and the robot that sends the free AI visibility report
 
 GitHub → Settings → Secrets and variables → Actions → New repository secret:
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY`,
-`DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, `RESEND_API_KEY`.
+`SERPAPI_API_KEY`, `RESEND_API_KEY`.
 
 Optional variables (same page, Variables tab) if a model name ever needs changing:
 `OPENAI_MODEL`, `JUDGE_MODEL`, `GEMINI_MODEL`, `ANTHROPIC_MODEL`.

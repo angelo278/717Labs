@@ -133,15 +133,18 @@ def ask_claude(q, city):
 
 
 def ask_google_aio(q, city):
-    login, pw = env("DATAFORSEO_LOGIN"), env("DATAFORSEO_PASSWORD")
-    r = requests.post("https://api.dataforseo.com/v3/serp/google/organic/live/advanced", timeout=TIMEOUT,
-                      auth=(login, pw),
-                      json=[{"keyword": q, "location_code": 2826, "language_code": "en", "device": "desktop",
-                             "load_async_ai_overview": True}])
+    """Google AI Overviews via SerpApi (free plan: 250 searches a month)."""
+    key = env("SERPAPI_API_KEY")
+    base = {"api_key": key, "hl": "en", "gl": "uk", "google_domain": "google.co.uk"}
+    r = requests.get("https://serpapi.com/search.json", timeout=TIMEOUT,
+                     params={**base, "engine": "google", "q": q, "location": f"{city}, United Kingdom" if city else "United Kingdom"})
     r.raise_for_status()
-    j = r.json()
-    items = (((j.get("tasks") or [{}])[0].get("result") or [{}])[0].get("items")) or []
-    aio = [i for i in items if i.get("type") == "ai_overview"]
+    aio = r.json().get("ai_overview") or {}
+    if aio.get("page_token") and not aio.get("text_blocks"):
+        r2 = requests.get("https://serpapi.com/search.json", timeout=TIMEOUT,
+                          params={**base, "engine": "google_ai_overview", "page_token": aio["page_token"]})
+        if r2.ok:
+            aio = r2.json().get("ai_overview") or aio
     if not aio:
         return "", []
     parts, cites = [], []
@@ -149,16 +152,16 @@ def ask_google_aio(q, city):
     def walk(o):
         if isinstance(o, dict):
             for k, v in o.items():
-                if k in ("markdown", "text") and isinstance(v, str):
+                if k in ("snippet", "title") and isinstance(v, str):
                     parts.append(v)
-                elif k == "url" and isinstance(v, str):
+                elif k == "link" and isinstance(v, str):
                     cites.append(v)
-                else:
+                elif k not in ("thumbnail", "page_token", "serpapi_link"):
                     walk(v)
         elif isinstance(o, list):
             for v in o:
                 walk(v)
-    walk(aio[0].get("markdown") and {"markdown": aio[0]["markdown"], "references": aio[0].get("references")} or aio[0])
+    walk({"text_blocks": aio.get("text_blocks", []), "references": aio.get("references", [])})
     return "\n".join(dict.fromkeys(p.strip() for p in parts if p.strip())), cites
 
 
