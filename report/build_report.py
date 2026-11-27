@@ -130,7 +130,7 @@ def build(d):
     pages.append(f'''<section class="page">
 <div class="kicker">About this report</div><h2>How we measured, and what happens next</h2>
 <div class="two"><div><h3>How we measured</h3>
-<p>We asked {len(P)} AI platforms the same {len(Q)} questions: {nrec} that a potential customer might ask, and one asking about your business by name. That gives {len(P) * len(Q)} answers.{' Questions were asked through each platform&rsquo;s official connection with web search switched on, set to the United Kingdom.' if d.get('captured') else ''}</p>
+<p>We asked {len(P)} AI platforms the same {len(Q)} questions: {nrec} that a potential customer might ask, and one asking about your business by name. That gives {len(P) * len(Q)} answers.{(' Questions were asked through each platform&rsquo;s official connection with web search switched on, set to ' + e(d.get('country') or 'your country') + '.') if d.get('captured') else ''}</p>
 <p>Each answer scores 2 points if you are recommended or described accurately, 1 point if you are mentioned or described with errors, and 0 if you do not appear. Your score is your share of the {maxp} available points, out of 100. Competitors are scored the same way.</p>
 <h3>Score bands</h3><div class="bands"><div><b>0–39</b>Rarely mentioned by AI</div><div><b>40–69</b>Sometimes mentioned by AI</div><div><b>70–100</b>Regularly recommended by AI</div></div>
 <p class="small">AI answers change over time and can vary between users and locations. This report is a snapshot taken on {e(d['date'])} and is a guide, not a guarantee of future results.</p></div>

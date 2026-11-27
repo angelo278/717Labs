@@ -52,17 +52,17 @@ def first_working(models, call):
     raise last
 
 
-def ask_chatgpt(q, city):
+def ask_chatgpt(q, loc):
     key = env("OPENAI_API_KEY")
     models = [m for m in [os.environ.get("OPENAI_MODEL"), "gpt-5.5-mini", "gpt-5.1-mini", "gpt-5-mini", "gpt-5.5"] if m]
 
     def call(m):
-        loc = {"type": "approximate", "country": "GB"}
-        if city:
-            loc["city"] = city
+        ul = {"type": "approximate", "country": loc["cc"]}
+        if loc.get("city"):
+            ul["city"] = loc["city"]
         r = requests.post("https://api.openai.com/v1/responses", timeout=TIMEOUT,
                           headers={"Authorization": f"Bearer {key}"},
-                          json={"model": m, "input": q, "tools": [{"type": "web_search", "user_location": loc}]})
+                          json={"model": m, "input": q, "tools": [{"type": "web_search", "user_location": ul}]})
         r.raise_for_status()
         return responses_text(r.json())
     return first_working(models, call)
@@ -83,7 +83,7 @@ def responses_text(j):
     return "\n".join(texts).strip(), cites
 
 
-def ask_perplexity(q, city):
+def ask_perplexity(q, loc):
     key = env("PERPLEXITY_API_KEY")
     r = requests.post("https://api.perplexity.ai/v1/agent", timeout=TIMEOUT,
                       headers={"Authorization": f"Bearer {key}"},
@@ -92,7 +92,7 @@ def ask_perplexity(q, city):
     return responses_text(r.json())
 
 
-def ask_gemini(q, city):
+def ask_gemini(q, loc):
     key = env("GEMINI_API_KEY")
     models = [m for m in [os.environ.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash"] if m]
 
@@ -109,13 +109,13 @@ def ask_gemini(q, city):
     return first_working(models, call)
 
 
-def ask_claude(q, city):
+def ask_claude(q, loc):
     key = env("ANTHROPIC_API_KEY")
     models = [m for m in [os.environ.get("ANTHROPIC_MODEL"), "claude-haiku-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] if m]
 
     def call(m):
         tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 3,
-                "user_location": {"type": "approximate", "country": "GB", **({"city": city} if city else {})}}
+                "user_location": {"type": "approximate", "country": loc["cc"], **({"city": loc["city"]} if loc.get("city") else {})}}
         r = requests.post("https://api.anthropic.com/v1/messages", timeout=TIMEOUT,
                           headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
                           json={"model": m, "max_tokens": 1500, "tools": [tool], "messages": [{"role": "user", "content": q}]})
@@ -132,12 +132,20 @@ def ask_claude(q, city):
     return first_working(models, call)
 
 
-def ask_google_aio(q, city):
+def ask_google_aio(q, loc):
     """Google AI Overviews via SerpApi (free plan: 250 searches a month)."""
     key = env("SERPAPI_API_KEY")
-    base = {"api_key": key, "hl": "en", "gl": "uk", "google_domain": "google.co.uk"}
-    r = requests.get("https://serpapi.com/search.json", timeout=TIMEOUT,
-                     params={**base, "engine": "google", "q": q, "location": f"{city}, United Kingdom" if city else "United Kingdom"})
+    cc = loc["cc"].lower()
+    gl = "uk" if cc == "gb" else cc
+    domain = GOOGLE_DOMAINS.get(cc, "google.com")
+    base = {"api_key": key, "hl": "en", "gl": gl, "google_domain": domain}
+    params = {**base, "engine": "google", "q": q}
+    if loc.get("country_name"):
+        params["location"] = f'{loc["city"]}, {loc["country_name"]}' if loc.get("city") else loc["country_name"]
+    r = requests.get("https://serpapi.com/search.json", timeout=TIMEOUT, params=params)
+    if r.status_code == 400 and "location" in params:   # SerpApi did not recognise the place name: retry by country only
+        params.pop("location")
+        r = requests.get("https://serpapi.com/search.json", timeout=TIMEOUT, params=params)
     r.raise_for_status()
     aio = r.json().get("ai_overview") or {}
     if aio.get("page_token") and not aio.get("text_blocks"):
@@ -164,6 +172,12 @@ def ask_google_aio(q, city):
     walk({"text_blocks": aio.get("text_blocks", []), "references": aio.get("references", [])})
     return "\n".join(dict.fromkeys(p.strip() for p in parts if p.strip())), cites
 
+
+GOOGLE_DOMAINS = {"gb": "google.co.uk", "us": "google.com", "ca": "google.ca", "au": "google.com.au", "nz": "google.co.nz",
+                  "ie": "google.ie", "za": "google.co.za", "ae": "google.ae", "in": "google.co.in", "sg": "google.com.sg",
+                  "ng": "google.com.ng", "ke": "google.co.ke", "mw": "google.mw", "de": "google.de", "fr": "google.fr",
+                  "nl": "google.nl", "es": "google.es", "it": "google.it", "sa": "google.com.sa", "qa": "google.com.qa",
+                  "hk": "google.com.hk", "my": "google.com.my", "ph": "google.com.ph", "gh": "google.com.gh"}
 
 ASKERS = {"ChatGPT": ask_chatgpt, "Perplexity": ask_perplexity, "Gemini": ask_gemini,
           "Google AI Overviews": ask_google_aio, "Claude": ask_claude}
@@ -271,12 +285,15 @@ def audit_site(website):
 
 # ---------------------------------------------------------------- the report
 def plan(req, audit, site_text):
-    hint = '{"business_name":str,"name_variants":[str],"city":str,"trade_plural":str,"one_line_summary":str,"questions":[str x4]}'
-    instr = ("You prepare an AI visibility check for a UK business. From the website text, identify the business name "
-             "(and short variants people might use), the town or city it serves (empty if unclear), and what it does in plain words "
+    hint = '{"business_name":str,"name_variants":[str],"city":str,"country_code":str,"country_name":str,"trade_plural":str,"one_line_summary":str,"questions":[str x4]}'
+    instr = ("You prepare an AI visibility check for a business, which may be in any country. From the website text, identify the business name "
+             "(and short variants people might use), the town or city it serves (empty if unclear), the country it mainly serves "
+             "(country_code = ISO 3166-1 alpha-2, e.g. GB, US, AE, ZA, AU; use the website's address, phone code, currency or domain; "
+             "country_name in English), and what it does in plain words "
              "(trade_plural, e.g. 'accountants', 'wedding photographers'). Write exactly 4 questions a potential customer would "
              "type into an AI assistant when looking for this kind of business. Do NOT include the business name in these 4. "
-             "Include the town/city when known. Keep each under 20 words, natural British English. "
+             "Include the town/city (and the country if the city alone is ambiguous) when known. Keep each under 20 words, "
+             "in natural English as people in that country would phrase it. "
              "If the customer supplied example searches, base 1-2 questions on them.")
     content = json.dumps({"website": audit.get("final_url", req["website"]), "title": audit.get("title"),
                           "meta_description": audit.get("meta_description"), "h1": audit.get("h1"),
@@ -286,30 +303,33 @@ def plan(req, audit, site_text):
     if len(qs) < 4 or not p.get("business_name"):
         raise RuntimeError("Could not work out the business or questions from the website")
     city = p.get("city", "").strip()
+    cc = str(p.get("country_code") or "").strip().upper()
+    p["country_code"] = cc if re.fullmatch(r"[A-Z]{2}", cc) else "GB"
+    p["country_name"] = str(p.get("country_name") or "").strip() or ("the United Kingdom" if p["country_code"] == "GB" else p["country_code"])
     qs.append(f"What do you know about {p['business_name']}{' in ' + city if city else ''}?")
     p["questions"] = qs
     return p
 
 
-def ask_all(questions, city):
+def ask_all(questions, loc):
     jobs = {}
     with cf.ThreadPoolExecutor(max_workers=12) as ex:
         for qi, q in enumerate(questions):
             for p in PLATFORMS:
                 fn = mock_answer if MOCK else ASKERS[p]
-                jobs[ex.submit(safe_ask, fn, p, q, city)] = (qi, p)
+                jobs[ex.submit(safe_ask, fn, p, q, loc)] = (qi, p)
         out = {}
         for f in cf.as_completed(jobs):
             out[jobs[f]] = f.result()
     return out
 
 
-def safe_ask(fn, platform, q, city):
+def safe_ask(fn, platform, q, loc):
     for attempt in range(2):
         try:
             if fn is mock_answer:
-                return {"ok": True, **dict(zip(("text", "cites"), fn(platform, q, city)))}
-            t, c = fn(q, city)
+                return {"ok": True, **dict(zip(("text", "cites"), fn(platform, q, loc)))}
+            t, c = fn(q, loc)
             return {"ok": True, "text": t, "cites": c}
         except Exception as e:
             log(f"{platform} failed ({attempt + 1}):", str(e)[:200])
@@ -424,7 +444,7 @@ def build_data(req, p, audit, answers, verdicts):
     picks = (missing[:1] + present[:1] + missing[1:2] + missing[2:3])[:2]
     screenshots = [card(*k) for k in picks]
 
-    facts = {"business": p["business_name"], "city": p.get("city"), "trade": p.get("trade_plural"),
+    facts = {"business": p["business_name"], "city": p.get("city"), "country": p.get("country_name"), "trade": p.get("trade_plural"),
              "overall_score": total_score, "recommendation_score": rec_score,
              "platforms_checked": plats, "platforms_mentioning_in_customer_questions": plats_found,
              "customer_question_answers_including_business": f"{rec_mentions} of {nrec * len(plats)}",
@@ -433,7 +453,7 @@ def build_data(req, p, audit, answers, verdicts):
              "answer_notes": {f"Q{qi + 1} {pl}": (verdicts.get((qi, pl)) or {}).get("note") for qi in range(len(questions)) for pl in plats},
              "competitors": competitors, "website_check": {k: v for k, v in audit.items() if k not in ("url",)}}
     hint = ('{"summary":[str,str,str],"opportunities":[{"title":str,"found":str,"action":str,"why":str,"effort":"Low"|"Medium"|"High"} x3]}')
-    instr = ("You write a free AI visibility report for a UK small business owner, in calm, plain British English. No jargon, "
+    instr = ("You write a free AI visibility report for a small business owner (in any country), in calm, plain British English. No jargon, "
              "no hype, no guarantees, no exclamation marks. Use ONLY the facts provided: never invent numbers, reviews, listings, "
              "awards or details you were not given. If you are not sure something is true, do not say it. "
              "summary: 3 sentences (each under 40 words) on what was found, using the provided numbers exactly. "
@@ -454,7 +474,7 @@ def build_data(req, p, audit, answers, verdicts):
     return {
         "sample": False, "business": p["business_name"],
         "website": urlparse(audit.get("final_url", audit["url"])).netloc.replace("www.", ""),
-        "location": p.get("city") or "the UK", "date": dt.date.today().strftime("%-d %B %Y"),
+        "location": (f'{p["city"]}, {p["country_name"]}' if p.get("city") else p.get("country_name")) or "your market", "country": p.get("country_name", ""), "date": dt.date.today().strftime("%-d %B %Y"),
         "platforms": plats, "questions": questions, "results": results, "summary": summary,
         "competitors": competitors, "screenshots": screenshots, "opportunities": opps,
         "rec_score": rec_score, "captured": True,
@@ -513,8 +533,9 @@ def run(req):
         raise RuntimeError(audit.get("error", "Website could not be loaded"))
     log("website checked:", audit.get("final_url"))
     p = plan(req, audit, site_text)
-    log("business:", p["business_name"], "|", p.get("city"), "| questions:", p["questions"])
-    answers = ask_all(p["questions"], p.get("city", ""))
+    log("business:", p["business_name"], "|", p.get("city"), p.get("country_code"), "| questions:", p["questions"])
+    loc = {"cc": p["country_code"], "city": p.get("city", ""), "country_name": p.get("country_name", "")}
+    answers = ask_all(p["questions"], loc)
     log("answers collected:", sum(a["ok"] for a in answers.values()), "of", len(answers))
     verdicts = judge(p, p["questions"], answers, audit)
     data = build_data(req, p, audit, answers, verdicts)
@@ -563,7 +584,7 @@ def main():
 
 
 # ---------------------------------------------------------------- test doubles (MOCK=1)
-def mock_answer(platform, q, city):
+def mock_answer(platform, q, loc):
     if "What do you know" in q:
         return ("Harbour Lane Dental is a dental practice in Bristol offering check-ups, hygiene and Invisalign. "
                 "Some listings show an older phone number.", ["https://harbourlanedental.co.uk"])
@@ -578,7 +599,7 @@ def mock_answer(platform, q, city):
 def mock_llm(instructions, content):
     c = json.loads(content)
     if "score one AI assistant answer" not in instructions and "summary:" not in instructions:
-        return {"business_name": "Harbour Lane Dental", "name_variants": ["Harbour Lane"], "city": "Bristol",
+        return {"business_name": "Harbour Lane Dental", "name_variants": ["Harbour Lane"], "city": "Bristol", "country_code": "GB", "country_name": "United Kingdom",
                 "trade_plural": "dentists", "one_line_summary": "Dental practice in Bristol",
                 "questions": ["Who are the best dentists in Bristol?", "Can you recommend an NHS dentist in Bristol?",
                               "Which dentists in Bristol offer Invisalign?", "I'm nervous about the dentist. Who should I see in Bristol?"]}
