@@ -1,10 +1,15 @@
 // Handles a consultation booking: checks the time, reserves it, and emails a confirmation
 // with a calendar invite to the visitor, plus a copy to info@.
 import { getStore } from "@netlify/blobs";
+import { createHmac } from "node:crypto";
+
+// Private link for freeing a booked slot (signed so nobody else can use it).
+export const signSlot = (iso) => createHmac("sha256", process.env.BOOKING_SECRET || process.env.RESEND_API_KEY || "717labs").update(iso).digest("hex").slice(0, 32);
+export const cancelLink = (iso) => `https://717labs.co.uk/api/cancel?slot=${encodeURIComponent(iso)}&key=${signSlot(iso)}`;
 
 const INFO = "info@717labs.co.uk";
 const FROM = process.env.BOOKING_FROM || "717Labs <bookings@717labs.co.uk>";
-const TIMES = ["10:00", "11:30", "14:00", "15:30"];          // UK times offered on the website
+const TIMES = ["10:00", "11:30", "14:00", "15:30", "17:00"];          // UK times offered on the website
 const MINUTES = 20;
 const MEETING_LINK = process.env.MEETING_LINK || "";        // e.g. your Google Meet or Zoom personal link
 
@@ -105,6 +110,7 @@ export async function handleBooking(payload) {
   await send({ to: INFO, subject: `New consultation: ${name}, ${ukWhen} UK`, ics,
     html: wrap(`<p><strong>New consultation booked.</strong></p><p>${esc(ukWhen)} UK time<br>(their time: ${esc(localWhen)}, ${esc(tz)})</p>
 <p>Name: ${esc(name)}<br>Email: <a href="mailto:${esc(email)}">${esc(email)}</a><br>Website: ${esc(website || "not given")}</p>
-<p>The calendar invite is attached. Tip: request a free report for their website before the call.</p>`) });
+<p>The calendar invite is attached. Tip: request a free report for their website before the call.</p>
+<p style="color:#3E4F6E;font-size:13px">If this call is cancelled or moved, <a href="${cancelLink(iso)}">free up this time slot</a> so someone else can book it.</p>`) });
   return "booked";
 }

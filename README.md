@@ -40,4 +40,4 @@ MOCK=1 python report/pipeline.py some-request.json
 
 ## Consultation bookings
 
-`netlify/lib/booking.mjs` handles the "consultation" form: it reserves the slot (so it shows as Booked on the site via `/api/slots`), emails the visitor a confirmation with a calendar invite, and sends a copy to info@. Netlify environment variables: `RESEND_API_KEY` (required), `MEETING_LINK` (optional: your Google Meet or Zoom personal link), `BOOKING_FROM` (optional).
+`netlify/lib/booking.mjs` handles the "consultation" form: it reserves the slot (so it shows as Booked on the site via `/api/slots`), emails the visitor a confirmation with a calendar invite, and sends a copy to info@. Netlify environment variables: `RESEND_API_KEY` (required), `MEETING_LINK` (optional: your Google Meet or Zoom personal link), `BOOKING_FROM` (optional). Each booking email to info@ includes a private link to free the slot if the call is cancelled (`/api/cancel`).
