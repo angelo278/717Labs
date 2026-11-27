@@ -179,6 +179,210 @@ GOOGLE_DOMAINS = {"gb": "google.co.uk", "us": "google.com", "ca": "google.ca", "
                   "nl": "google.nl", "es": "google.es", "it": "google.it", "sa": "google.com.sa", "qa": "google.com.qa",
                   "hk": "google.com.hk", "my": "google.com.my", "ph": "google.com.ph", "gh": "google.com.gh"}
 
+
+# ---------------------------------------------------------------- DataForSEO (one account for all five platforms)
+DFS = "https://api.dataforseo.com/v3/"
+DFS_COST = []                      # running total of DataForSEO spend for this report (USD)
+# Google/DataForSEO location codes for common countries; others fall back to the country name.
+LOC_CODES = {"GB": 2826, "US": 2840, "CA": 2124, "AU": 2036, "NZ": 2554, "IE": 2372, "ZA": 2710, "AE": 2784, "IN": 2356,
+             "SG": 2702, "NG": 2566, "KE": 2404, "DE": 2276, "FR": 2250, "NL": 2528, "ES": 2724, "IT": 2380, "SA": 2682,
+             "QA": 2634, "HK": 2344, "MY": 2458, "PH": 2608, "GH": 2288, "MW": 2454}
+CLAUDE_SEARCH_CC = set("AR AT AU BE BR CA CH CL CN DE DK ES FI FR GB HK ID IN IT JP KR MX MY NL NO NZ PH PL PT RU SA SE TR TW US ZA".split())
+
+
+def dfs_on():
+    return bool(os.environ.get("DATAFORSEO_LOGIN", "").strip())
+
+
+def dfs(path, task, method="POST"):
+    """Call DataForSEO and return the first result object (raises on any error)."""
+    auth = (env("DATAFORSEO_LOGIN"), env("DATAFORSEO_PASSWORD"))
+    if method == "GET":
+        r = requests.get(DFS + path, auth=auth, timeout=150)
+    else:
+        r = requests.post(DFS + path, auth=auth, timeout=150, json=[task])
+    r.raise_for_status()
+    j = r.json()
+    if j.get("status_code") != 20000:
+        raise RuntimeError(f"DataForSEO {path}: {j.get('status_code')} {j.get('status_message')}")
+    t = (j.get("tasks") or [{}])[0]
+    DFS_COST.append(float(t.get("cost") or 0))
+    if t.get("status_code") != 20000:
+        raise RuntimeError(f"DataForSEO {path}: {t.get('status_code')} {t.get('status_message')}")
+    return (t.get("result") or [None])[0] or {}
+
+
+def dfs_loc(loc):
+    code = LOC_CODES.get(loc["cc"])
+    if code:
+        return {"location_code": code}
+    name = re.sub(r"(?i)^the\s+", "", loc.get("country_name") or "").strip()
+    return {"location_name": name or "United States"}
+
+
+def dfs_kw(q):
+    return q.replace("%", "%25").replace("+", "%2B")
+
+
+def scraped_text(res):
+    """Answer text and cited links from an LLM Scraper result (ChatGPT / Gemini as the public sees them)."""
+    text = res.get("markdown") or "\n".join(i.get("markdown") or "" for i in res.get("items") or [])
+    cites = [x.get("url", "") for x in res.get("sources") or [] if x.get("url")]
+    for it in res.get("items") or []:
+        if it.get("type", "").endswith("local_businesses"):        # map-style business lists count as part of the answer
+            for b in it.get("items") or []:
+                text += f"\n{b.get('title', '')}: {b.get('description') or ''} {b.get('address') or ''}"
+                if b.get("url"):
+                    cites.append(b["url"])
+    return text.strip(), cites
+
+
+def response_text(res):
+    """Answer text and citations from an LLM Responses result (Claude / Perplexity / fallbacks)."""
+    texts, cites = [], []
+    for it in res.get("items") or []:
+        if it.get("type") != "message":
+            continue
+        for sec in it.get("sections") or []:
+            if sec.get("type") == "text" and sec.get("text"):
+                texts.append(sec["text"])
+            cites += [a.get("url", "") for a in sec.get("annotations") or [] if a.get("url")]
+    cites += [x.get("url", "") for x in res.get("search_results") or [] if x.get("url")]
+    return "\n".join(texts).strip(), cites
+
+
+_MODELS = {}
+
+
+def dfs_models(platform):
+    """List of model names DataForSEO currently offers for a platform (cached)."""
+    if platform not in _MODELS:
+        try:
+            r = requests.get(f"{DFS}ai_optimization/{platform}/llm_responses/models", timeout=60,
+                             auth=(env("DATAFORSEO_LOGIN"), env("DATAFORSEO_PASSWORD")))
+            names = re.findall(r'"model_name"\s*:\s*"([^"]+)"', r.text)
+        except Exception:
+            names = []
+        _MODELS[platform] = list(dict.fromkeys(names))
+    return _MODELS[platform]
+
+
+def dfs_respond(platform, q, loc, prefer, extra):
+    """Ask a model through DataForSEO LLM Responses, trying preferred model names, then any listed one that matches."""
+    tried, last = set(), None
+    candidates = [m for m in [os.environ.get(f"DFS_{platform.upper()}_MODEL")] + prefer if m]
+    for attempt in range(2):
+        for m in candidates:
+            if m in tried:
+                continue
+            tried.add(m)
+            try:
+                return response_text(dfs(f"ai_optimization/{platform}/llm_responses/live",
+                                         {"user_prompt": q[:500], "model_name": m, "max_output_tokens": 1500, **extra}))
+            except Exception as e:
+                last = e
+                if not re.search(r"model", str(e), re.I):
+                    raise
+                log(f"{platform}: model {m} not available")
+        listed = dfs_models(platform)
+        candidates = [m for m in listed if re.search(r"haiku|mini|flash|sonar", m) and "embed" not in m][:4] or listed[:3]
+    raise last or RuntimeError(f"No working {platform} model")
+
+
+def dfs_scrape(platform, q, loc):
+    task = {"keyword": dfs_kw(q[:2000]), "language_code": "en", "force_web_search": True, **dfs_loc(loc)}
+    return scraped_text(dfs(f"ai_optimization/{platform}/llm_scraper/live/advanced", task))
+
+
+def dfs_chatgpt(q, loc):
+    try:
+        return dfs_scrape("chat_gpt", q, loc)
+    except Exception as e:                     # e.g. a country the scraper does not cover: use the model with web search
+        log("ChatGPT scraper unavailable, using LLM responses:", str(e)[:120])
+        return dfs_respond("chat_gpt", q, loc, ["gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini"],
+                           {"web_search": True, "web_search_country_iso_code": loc["cc"]})
+
+
+def dfs_gemini(q, loc):
+    try:
+        return dfs_scrape("gemini", q, loc)
+    except Exception as e:
+        log("Gemini scraper unavailable, using LLM responses:", str(e)[:120])
+        return dfs_respond("gemini", q, loc, ["gemini-2.5-flash", "gemini-flash"], {"web_search": True})
+
+
+def dfs_claude(q, loc):
+    extra = {"web_search": True}
+    if loc["cc"] in CLAUDE_SEARCH_CC:
+        extra["web_search_country_iso_code"] = loc["cc"]
+        if loc.get("city"):
+            extra["web_search_city"] = loc["city"]
+    return dfs_respond("claude", q, loc, ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-haiku"], extra)
+
+
+def dfs_perplexity(q, loc):
+    return dfs_respond("perplexity", q, loc, ["sonar", "sonar-pro"],
+                       {"web_search": True, "web_search_country_iso_code": loc["cc"]})
+
+
+def dfs_google_aio(q, loc):
+    res = dfs("serp/google/organic/live/advanced",
+              {"keyword": dfs_kw(q[:700]), "language_code": "en", "device": "desktop", "load_async_ai_overview": True, **dfs_loc(loc)})
+    parts, cites = [], []
+
+    def walk(o):
+        if isinstance(o, dict):
+            if o.get("markdown"):
+                parts.append(o["markdown"])
+            elif o.get("text") and o.get("type", "").startswith("ai_overview") and "reference" not in o.get("type", ""):
+                parts.append(o["text"])
+            if o.get("type") == "ai_overview_reference" and o.get("url"):
+                cites.append(o["url"])
+                return
+            for k, v in o.items():
+                if k not in ("images", "markdown", "text"):
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    for it in res.get("items") or []:
+        if "ai_overview" in it.get("type", ""):
+            walk(it.get("items") or [])
+    return "\n".join(dict.fromkeys(x.strip() for x in parts if x.strip())), cites
+
+
+def ai_demand(p, domain, loc):
+    """AI search demand: how often AI answers cite this website, and how much AI searching there is for this trade.
+    Uses DataForSEO's database of real AI answers (Google AI Overviews). Returns None if there is no useful data."""
+    if not dfs_on() or os.environ.get("REPORT_DEMAND", "1") == "0":
+        return None
+    base = {"platform": "google", "language_code": "en", **dfs_loc(loc)}
+
+    def total(target):
+        res = dfs("ai_optimization/llm_mentions/aggregated_metrics/live", {**base, "target": target, "internal_list_limit": 5})
+        g = ((res.get("total") or {}).get("platform") or [{}])[0] or {}
+        return int(g.get("mentions") or 0), int(g.get("ai_search_volume") or 0)
+    out = {"trade": p.get("trade_plural", ""), "country": re.sub(r"(?i)^the\s+", "", p.get("country_name", ""))}
+    try:
+        out["your_mentions"], out["your_volume"] = total([{"domain": domain, "search_scope": "any"}])
+    except Exception as e:
+        log("demand (domain) skipped:", str(e)[:150])
+        out["your_mentions"] = None
+    kw = (p.get("trade_keyword") or "").strip()
+    if kw:
+        try:
+            out["industry_mentions"], out["industry_volume"] = total([{"keyword": kw[:250], "search_scope": "question", "match_type": "partial_match"}])
+        except Exception as e:
+            log("demand (industry) skipped:", str(e)[:150])
+    if not out.get("industry_volume") and not out.get("your_mentions"):
+        return None
+    out["keyword"] = kw
+    return out
+
+
+DFS_ASKERS = {"ChatGPT": dfs_chatgpt, "Perplexity": dfs_perplexity, "Gemini": dfs_gemini,
+              "Google AI Overviews": dfs_google_aio, "Claude": dfs_claude}
+
 ASKERS = {"ChatGPT": ask_chatgpt, "Perplexity": ask_perplexity, "Gemini": ask_gemini,
           "Google AI Overviews": ask_google_aio, "Claude": ask_claude}
 
@@ -285,12 +489,12 @@ def audit_site(website):
 
 # ---------------------------------------------------------------- the report
 def plan(req, audit, site_text):
-    hint = '{"business_name":str,"name_variants":[str],"city":str,"country_code":str,"country_name":str,"trade_plural":str,"one_line_summary":str,"questions":[str x4]}'
+    hint = '{"business_name":str,"name_variants":[str],"city":str,"country_code":str,"country_name":str,"trade_plural":str,"trade_keyword":str,"one_line_summary":str,"questions":[str x4]}'
     instr = ("You prepare an AI visibility check for a business, which may be in any country. From the website text, identify the business name "
              "(and short variants people might use), the town or city it serves (empty if unclear), the country it mainly serves "
              "(country_code = ISO 3166-1 alpha-2, e.g. GB, US, AE, ZA, AU; use the website's address, phone code, currency or domain; "
              "country_name in English), and what it does in plain words "
-             "(trade_plural, e.g. 'accountants', 'wedding photographers'). Write exactly 4 questions a potential customer would "
+             "(trade_plural, e.g. 'accountants', 'wedding photographers'; trade_keyword = the single most common word or two-word phrase people use for this kind of business, singular and lower case, e.g. 'accountant', 'wedding photographer'). Write exactly 4 questions a potential customer would "
              "type into an AI assistant when looking for this kind of business. Do NOT include the business name in these 4. "
              "Include the town/city (and the country if the city alone is ambiguous) when known. Keep each under 20 words, "
              "in natural English as people in that country would phrase it. "
@@ -316,7 +520,7 @@ def ask_all(questions, loc):
     with cf.ThreadPoolExecutor(max_workers=12) as ex:
         for qi, q in enumerate(questions):
             for p in PLATFORMS:
-                fn = mock_answer if MOCK else ASKERS[p]
+                fn = mock_answer if MOCK else (DFS_ASKERS if dfs_on() else ASKERS)[p]
                 jobs[ex.submit(safe_ask, fn, p, q, loc)] = (qi, p)
         out = {}
         for f in cf.as_completed(jobs):
@@ -539,11 +743,16 @@ def run(req):
     log("answers collected:", sum(a["ok"] for a in answers.values()), "of", len(answers))
     verdicts = judge(p, p["questions"], answers, audit)
     data = build_data(req, p, audit, answers, verdicts)
+    data["demand"] = ai_demand(p, data["website"], loc) if not MOCK else {
+        "trade": "dentists", "country": "United Kingdom", "keyword": "dentist", "your_mentions": 3, "your_volume": 1900,
+        "industry_mentions": 48210, "industry_volume": 2650000}
+    data["capture"] = "dfs" if (dfs_on() or MOCK) else "api"
+    log(f"DataForSEO spend for this report: ${sum(DFS_COST):.3f}")
     safe = re.sub(r"[^A-Za-z0-9]+", "-", data["business"]).strip("-")[:40] or "report"
     out = HERE / "out" / f"717Labs-AI-visibility-report-{safe}.pdf"
     out.parent.mkdir(exist_ok=True)
     (out.with_suffix(".json")).write_text(json.dumps({"request": {k: v for k, v in req.items() if k != "email"}, "data": data,
-                                                      "answers": {f"{k[0]}|{k[1]}": v for k, v in answers.items()}}, indent=2))
+                                                      "answers": {f"{k[0]}|{k[1]}": v for k, v in answers.items()}, "dataforseo_cost_usd": round(sum(DFS_COST), 4)}, indent=2))
     build_report.render_pdf(data, str(out))
     log("PDF built:", out.name, "score", build_report.build(data)[1])
     send_email(email, f"Your free AI visibility report: {data['business']}", email_html([

@@ -41,3 +41,11 @@ MOCK=1 python report/pipeline.py some-request.json
 ## Consultation bookings
 
 `netlify/lib/booking.mjs` handles the "consultation" form: it reserves the slot (so it shows as Booked on the site via `/api/slots`), emails the visitor a confirmation with a calendar invite, and sends a copy to info@. Netlify environment variables: `RESEND_API_KEY` (required), `MEETING_LINK` (optional: your Google Meet or Zoom personal link), `BOOKING_FROM` (optional). Each booking email to info@ includes a private link to free the slot if the call is cancelled (`/api/cancel`).
+
+## Report data source (DataForSEO)
+
+When the `DATAFORSEO_LOGIN` and `DATAFORSEO_PASSWORD` secrets are set, the robot gets all five platforms from DataForSEO:
+ChatGPT and Gemini as the public sees them (LLM Scraper), Claude and Perplexity via LLM Responses with web search, and
+Google AI Overviews via the SERP API. It also adds an "AI search demand" panel from the LLM Mentions database. The robot's own
+thinking (planning, scoring, writing) still uses `OPENAI_API_KEY`. Each report logs its DataForSEO cost in the run log and JSON.
+Without the DataForSEO secrets it falls back to the separate platform keys.

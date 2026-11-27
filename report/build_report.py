@@ -35,6 +35,44 @@ def dial(score, size):
 
 SYM = {0: ('', 'Not mentioned', 's0'), 1: ('', 'Mentioned', 's1'), 2: ('', 'Recommended', 's2')}
 
+def fmt_n(n):
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}m".replace(".0m", "m")
+    if n >= 10_000:
+        return f"{round(n / 1000):,}k"
+    return f"{n:,}"
+
+
+def capture_note(d):
+    if not d.get('captured'):
+        return ''
+    where = e(d.get('country') or 'your country')
+    if d.get('capture') == 'dfs':
+        return (' ChatGPT and Gemini answers were captured as the public sees them, Claude and Perplexity through their official '
+                f'connections with web search on, and Google AI Overviews from live Google results. Searches were set to {where}.')
+    return f' Questions were asked through each platform&rsquo;s official connection with web search switched on, set to {where}.'
+
+
+def demand_html(d):
+    m = d.get('demand')
+    if not m:
+        return ''
+    cards = []
+    if m.get('industry_volume'):
+        cards.append(f'<div class="dcard"><b>{fmt_n(m["industry_volume"])}</b><span>estimated monthly AI searches mentioning '
+                     f'&ldquo;{e(m.get("keyword") or m.get("trade"))}&rdquo; in {e(m.get("country"))}</span></div>')
+    if m.get('your_mentions') is not None:
+        yours = m['your_mentions']
+        cards.append(f'<div class="dcard{" low" if not yours else ""}"><b>{fmt_n(yours)}</b><span>AI answers in our database that '
+                     f'mention or cite {e(d["website"])}</span></div>')
+    if not cards:
+        return ''
+    return (f'<h3>How much AI searching happens in your market</h3><div class="dcards">{"".join(cards)}</div>'
+            '<p class="small">From a database of millions of real AI answers (Google AI Overviews), supplied by DataForSEO. '
+            'Search figures are estimates and are strongest for busy industries.</p>')
+
+
 def build(d):
     P, Q, R = d['platforms'], d['questions'], d['results']
     nrec = len(Q) - 1                      # last question is the "about your business" question
@@ -96,6 +134,7 @@ def build(d):
 <table class="grid"><thead><tr><th class="q">Question asked</th>{head}</tr></thead><tbody>{body}</tbody></table>
 <div class="legend"><span><span class="sym s2"></span> Recommended: named as a top choice, or described accurately</span><span><span class="sym s1"></span> Mentioned: included, but not as a top choice, or described with errors</span><span><span class="sym s0"></span> Not mentioned</span></div>
 <h3>Score by platform</h3><div class="pcards">{''.join(per)}</div>
+{demand_html(d)}
 {foot(3)}</section>''')
 
     # 4 competitors
@@ -130,7 +169,7 @@ def build(d):
     pages.append(f'''<section class="page">
 <div class="kicker">About this report</div><h2>How we measured, and what happens next</h2>
 <div class="two"><div><h3>How we measured</h3>
-<p>We asked {len(P)} AI platforms the same {len(Q)} questions: {nrec} that a potential customer might ask, and one asking about your business by name. That gives {len(P) * len(Q)} answers.{(' Questions were asked through each platform&rsquo;s official connection with web search switched on, set to ' + e(d.get('country') or 'your country') + '.') if d.get('captured') else ''}</p>
+<p>We asked {len(P)} AI platforms the same {len(Q)} questions: {nrec} that a potential customer might ask, and one asking about your business by name. That gives {len(P) * len(Q)} answers.{capture_note(d)}</p>
 <p>Each answer scores 2 points if you are recommended or described accurately, 1 point if you are mentioned or described with errors, and 0 if you do not appear. Your score is your share of the {maxp} available points, out of 100. Competitors are scored the same way.</p>
 <h3>Score bands</h3><div class="bands"><div><b>0–39</b>Rarely mentioned by AI</div><div><b>40–69</b>Sometimes mentioned by AI</div><div><b>70–100</b>Regularly recommended by AI</div></div>
 <p class="small">AI answers change over time and can vary between users and locations. This report is a snapshot taken on {e(d['date'])} and is a guide, not a guarantee of future results.</p></div>
@@ -141,7 +180,7 @@ def build(d):
 <p class="tag">Be seen where it matters most.</p></div></div>
 {foot(6)}</section>''')
 
-    zooms = d.get('zoom', [1.12, 1.32, 1.32, 1.3, 1.2, 1.36])
+    zooms = d.get('zoom', [1.12, 1.32, 1.14 if d.get('demand') else 1.32, 1.3, 1.2, 1.36])
     out = []
     for k, pgh in enumerate(pages):
         a = pgh.index('>') + 1
@@ -154,6 +193,7 @@ def build(d):
 body{{margin:0;font-family:'Plus Jakarta Sans',Inter,sans-serif;color:{NAVY};-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 .page{{width:210mm;height:297mm;padding:18mm 17mm 22mm;position:relative;page-break-after:always;overflow:hidden;background:#fff}}
 .page:last-child{{page-break-after:auto}}
+.dcards{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 4px}}.dcard{{border:1px solid #DCE4F0;border-radius:12px;padding:12px 14px;background:#F6F9FD}}.dcard b{{display:block;font-size:26px;color:#2F6FEB;letter-spacing:-.02em}}.dcard.low b{{color:#C2410C}}.dcard span{{font-size:11.5px;color:#3E4F6E;line-height:1.4}}
 h1,h2,h3,h4{{margin:0;letter-spacing:-.02em}}
 p{{margin:0 0 9px;font-size:11.5px;line-height:1.6;color:#3B4A60}}
 .kicker{{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:{BLUE};margin-bottom:6px}}
