@@ -1009,3 +1009,4 @@ footer>.wrap:last-child{padding-top:12px!important;padding-bottom:16px!important
 .g-land{fill:#C9D3E1}.g-grat{stroke:#E8EDF4}
 .chip-note{display:block;font-style:normal;font-size:11px;font-weight:500;color:var(--dim);line-height:1.2;min-height:0}
 .chip-btn.sel .chip-note{color:rgba(255,255,255,.85)}
+.hl-word{font-weight:700;color:var(--blue)}
