@@ -290,7 +290,9 @@ def dfs_respond(platform, q, loc, prefer, extra):
 
 
 def dfs_scrape(platform, q, loc):
-    task = {"keyword": dfs_kw(q[:2000]), "language_code": "en", "force_web_search": True, **dfs_loc(loc)}
+    task = {"keyword": dfs_kw(q[:2000]), "language_code": "en", **dfs_loc(loc)}
+    if platform == "chat_gpt":                 # Gemini's scraper does not accept this option
+        task["force_web_search"] = True
     return scraped_text(dfs(f"ai_optimization/{platform}/llm_scraper/live/advanced", task))
 
 
@@ -364,14 +366,14 @@ def ai_demand(p, domain, loc):
         return int(g.get("mentions") or 0), int(g.get("ai_search_volume") or 0)
     out = {"trade": p.get("trade_plural", ""), "country": re.sub(r"(?i)^the\s+", "", p.get("country_name", ""))}
     try:
-        out["your_mentions"], out["your_volume"] = total([{"domain": domain, "search_scope": "any"}])
+        out["your_mentions"], out["your_volume"] = total([{"domain": domain, "search_scope": ["any"]}])
     except Exception as e:
         log("demand (domain) skipped:", str(e)[:150])
         out["your_mentions"] = None
     kw = (p.get("trade_keyword") or "").strip()
     if kw:
         try:
-            out["industry_mentions"], out["industry_volume"] = total([{"keyword": kw[:250], "search_scope": "question", "match_type": "partial_match"}])
+            out["industry_mentions"], out["industry_volume"] = total([{"keyword": kw[:250], "search_scope": ["question"], "match_type": "partial_match"}])
         except Exception as e:
             log("demand (industry) skipped:", str(e)[:150])
     if not out.get("industry_volume") and not out.get("your_mentions"):
@@ -756,7 +758,15 @@ def run(req):
     (out.with_suffix(".json")).write_text(json.dumps({"request": {k: v for k, v in req.items() if k != "email"}, "data": data,
                                                       "answers": {f"{k[0]}|{k[1]}": v for k, v in answers.items()}, "dataforseo_cost_usd": round(sum(DFS_COST), 4)}, indent=2))
     build_report.render_pdf(data, str(out))
+    req["_pdf"] = str(out)
     log("PDF built:", out.name, "score", build_report.build(data)[1])
+    send_report_email(req, data, out)
+    log(f"done in {time.time() - t0:.0f}s")
+    return "sent"
+
+
+def send_report_email(req, data, out):
+    name, email = first_name(req.get("name")), req["email"].strip()
     send_email(email, f"Your free AI visibility report: {data['business']}", email_html([
         f"Hi {name},",
         f"Thank you for requesting a free AI visibility report for <b>{htmllib.escape(data['business'])}</b>. It is attached as a PDF.",
@@ -764,8 +774,6 @@ def run(req):
         "for what you offer, which businesses appear instead, and the three changes we believe would make the biggest difference.",
         "If you would like to talk it through, just reply to this email and we will arrange a short call. There is no obligation.",
         "Best wishes,<br>The 717Labs team"]), pdf_path=out)
-    log(f"done in {time.time() - t0:.0f}s")
-    return "sent"
 
 
 def main():
@@ -775,6 +783,8 @@ def main():
             run(req)
         except Exception:
             log("first attempt failed:\n" + traceback.format_exc())
+            if req.get("_pdf"):                 # the report was built; only the email failed, so do not pay to rebuild it
+                raise
             time.sleep(10)
             run(req)
     except Exception:
