@@ -393,13 +393,15 @@ def llm_json(instructions, content, schema_hint):
     if MOCK:
         return mock_llm(instructions, content)
     key = env("OPENAI_API_KEY")
-    models = [m for m in [os.environ.get("JUDGE_MODEL"), "gpt-5.5-mini", "gpt-5.1-mini", "gpt-5-mini", "gpt-5.5"] if m]
+    models = [m for m in [os.environ.get("JUDGE_MODEL"), "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini", "gpt-5.5-mini", "gpt-5.1-mini"] if m]
 
     def call(m):
         r = requests.post("https://api.openai.com/v1/responses", timeout=TIMEOUT,
                           headers={"Authorization": f"Bearer {key}"},
                           json={"model": m, "instructions": instructions + "\nReply with JSON only, matching: " + schema_hint,
-                                "input": content, "text": {"format": {"type": "json_object"}}})
+                                "input": "Reply in JSON.\n" + content, "text": {"format": {"type": "json_object"}}})
+        if not r.ok:
+            log("OpenAI said:", r.status_code, r.text[:400].replace("\n", " "))
         r.raise_for_status()
         t, _ = responses_text(r.json())
         return json.loads(re.search(r"\{.*\}", t, re.S).group(0))
