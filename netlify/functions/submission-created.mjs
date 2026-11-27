@@ -1,6 +1,7 @@
 // Runs automatically every time Netlify accepts a form submission (spam is already filtered out).
 // It checks the request against simple limits, then asks GitHub to build and email the report.
 import { getStore } from "@netlify/blobs";
+import { handleBooking } from "../lib/booking.mjs";
 
 const PER_EMAIL_DAYS = 30;                                  // one report per email address per 30 days
 const DAILY_CAP = Number(process.env.REPORT_DAILY_CAP || 40); // protects against floods and runaway costs
@@ -14,6 +15,7 @@ const domainOf = (url) => {
 
 export default async (req) => {
   const { payload } = await req.json();
+  if (payload && payload.form_name === "consultation") return new Response(await handleBooking(payload));
   if (!payload || payload.form_name !== "free-report") return new Response("ignored");
 
   const d = payload.data || {};

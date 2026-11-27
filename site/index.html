@@ -258,7 +258,7 @@
       <div class="sched-copy">
         <div class="mono">Free consultation</div>
         <h2 id="chat-title">Book a consultation</h2>
-        <p class="lede">Pick a time that suits you and we&rsquo;ll confirm by email.</p>
+        <p class="lede">Pick a time that suits you and youPick a time that suits you and we&rsquo;ll confirm by email.rsquo;ll get an instant confirmation by email.</p>
         <ul class="sched-facts">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>20 minutes</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>Video or phone call</li>
@@ -268,6 +268,8 @@
       <form class="sched-form" name="consultation" method="POST" action="/chat-thanks.html" data-netlify="true" netlify-honeypot="company-url">
         <input type="hidden" name="form-name" value="consultation">
         <input type="hidden" name="slot" value="">
+        <input type="hidden" name="slot_utc" value="">
+        <input type="hidden" name="tz" value="">
         <p class="hp" hidden><label>Leave this empty <input name="company-url"></label></p>
         <div class="sched-pick">
         <div class="sched-step">1. Choose a day</div>
@@ -284,7 +286,7 @@
         </div>
         <label><span>Business website <em>(optional)</em></span><input name="website" autocomplete="url"></label>
         <div class="sched-sum" aria-live="polite">Choose a day and time above.</div>
-        <button class="btn btn-primary" type="submit">Request this time</button>
+        <button class="btn btn-primary" type="submit">Book this time</button>
         </div>
       </form>
     </div>
@@ -367,7 +369,7 @@ els.forEach(function(e){io.observe(e);});})();
 </script>
 <script>
 (function(){var f=document.querySelector('.sched-form');if(!f)return;
-var days=f.querySelector('.sched-days'),times=f.querySelector('.sched-times'),slot=f.querySelector('[name=slot]'),sum=f.querySelector('.sched-sum');
+var days=f.querySelector('.sched-days'),times=f.querySelector('.sched-times'),slot=f.querySelector('[name=slot]'),slotU=f.querySelector('[name=slot_utc]'),tzIn=f.querySelector('[name=tz]'),taken={},sum=f.querySelector('.sched-sum');
 var T=['10:00','11:30','14:00','15:30'],sel={d:null,t:null},out=[],d=new Date();d.setHours(12,0,0,0);
 var myTZ;try{myTZ=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){myTZ=null}
 while(out.length<8){d.setDate(d.getDate()+1);var w=d.getDay();if(w>0&&w<6)out.push(new Date(d));}
@@ -380,13 +382,16 @@ function differs(ms){if(!myTZ||myTZ==='Europe/London')return false;return localL
 function dayDiff(ms,day){var ld=new Date(ms);return ld.getDate()!==day.getDate()}
 function upd(){if(sel.d&&sel.t){var ms=ukToUTC(sel.d,sel.t),s=fmt(sel.d,{weekday:'long',day:'numeric',month:'long'})+' at '+sel.t+' UK time';
  if(differs(ms)){s+=' ('+localLabel(ms)+' your time'+(dayDiff(ms,sel.d)?', '+new Date(ms).toLocaleDateString('en-GB',{weekday:'short'}):'')+')'}
- slot.value=s+(myTZ?' [visitor time zone: '+myTZ+']':'');sum.textContent='You have chosen: '+s+'.';sum.classList.add('on');sum.classList.remove('warn')}
- else{slot.value='';sum.textContent='Choose a day and time above.';sum.classList.remove('on')}refreshTimes()}
+ slot.value=s+(myTZ?' [visitor time zone: '+myTZ+']':'');slotU.value=new Date(ms).toISOString();tzIn.value=myTZ||'';sum.textContent='You have chosen: '+s+'.';sum.classList.add('on');sum.classList.remove('warn')}
+ else{slot.value='';slotU.value='';sum.textContent='Choose a day and time above.';sum.classList.remove('on')}refreshTimes()}
 function chip(parent,label,sub,on,note){var b=document.createElement('button');b.type='button';b.className='chip-btn';b.setAttribute('role','radio');b.setAttribute('aria-checked','false');b.innerHTML=(sub?'<small>'+sub+'</small>':'')+'<b>'+label+'</b>'+(note?'<em class="chip-note"></em>':'');
  b.onclick=function(){parent.querySelectorAll('.chip-btn').forEach(function(x){x.classList.remove('sel');x.setAttribute('aria-checked','false')});b.classList.add('sel');b.setAttribute('aria-checked','true');on();upd()};parent.appendChild(b);return b}
 out.forEach(function(x){chip(days,fmt(x,{day:'numeric',month:'short'}),fmt(x,{weekday:'short'}),function(){sel.d=x})});
 var tchips=T.map(function(t){return chip(times,t,'',function(){sel.t=t},true)});
-function refreshTimes(){var day=sel.d||out[0];tchips.forEach(function(b,i){var ms=ukToUTC(day,T[i]),n=b.querySelector('.chip-note');n.textContent=differs(ms)?localLabel(ms)+' yours':''})}
+function refreshTimes(){var day=sel.d||out[0];tchips.forEach(function(b,i){var ms=ukToUTC(day,T[i]),n=b.querySelector('.chip-note'),bk=!!taken[new Date(ms).toISOString()];
+ b.disabled=bk;b.classList.toggle('taken',bk);if(bk&&b.classList.contains('sel')){b.classList.remove('sel');b.setAttribute('aria-checked','false');sel.t=null;setTimeout(upd,0)}
+ n.textContent=bk?'Booked':(differs(ms)?localLabel(ms)+' yours':'')})}
+fetch('/api/slots').then(function(r){return r.ok?r.json():{taken:[]}}).then(function(j){(j.taken||[]).forEach(function(k){taken[k]=1});refreshTimes()}).catch(function(){});
 refreshTimes();
 var stepLbl=f.querySelector('.sched-step span');if(stepLbl&&myTZ&&myTZ!=='Europe/London')stepLbl.textContent='(UK time, with your local time underneath)';
 f.addEventListener('submit',function(e){if(!slot.value){e.preventDefault();sum.textContent='Please choose a day and a time first.';sum.classList.add('warn');days.scrollIntoView({block:'center',behavior:'smooth'})}});
